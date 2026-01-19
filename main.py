@@ -1,33 +1,28 @@
 import json
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# ================= CONFIG =================
 TOKEN = os.environ.get("BOT_TOKEN")
 
 CHANNELS = ["@Din_koreakosmetika", "@D_lingu"]
 PRIVATE_CHANNEL_ID = -1003512316765
-ADMINS = [123456789]  # O'Z TELEGRAM ID
+ADMINS = [123456789]
 REQUIRED = 8
 DATA_FILE = "data.json"
 
-# ================= DATA HANDLER =================
+
 def load_data():
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except:
+    if not os.path.exists(DATA_FILE):
         return {"users": {}, "used": []}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
+
 
 data = load_data()
 
@@ -37,7 +32,7 @@ TEXT = (
     "🎯 8 ta odam olib keling va sovg‘ani oling!\n\n"
 )
 
-# ================= CHECK SUBS =================
+
 async def is_subscribed(bot, uid: int) -> bool:
     for ch in CHANNELS:
         member = await bot.get_chat_member(ch, uid)
@@ -45,7 +40,7 @@ async def is_subscribed(bot, uid: int) -> bool:
             return False
     return True
 
-# ================= START =================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
 
@@ -68,7 +63,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await context.bot.send_message(
                     int(ref),
-                    f"🎉 Linkingiz orqali "
+                    f"🎉 Sizning linkingiz orqali "
                     f"{data['users'][ref]['count']} ta odam qo‘shildi!\n"
                     f"📊 {data['users'][ref]['count']}/{REQUIRED}"
                 )
@@ -86,7 +81,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ================= CHECK =================
+
 async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -121,7 +116,7 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎁 Yopiq kanal linki:\n{invite.invite_link}"
         )
 
-# ================= ADMIN =================
+
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMINS:
         return
@@ -132,6 +127,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(txt)
 
+
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMINS:
         return
@@ -141,16 +137,21 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_data(data)
     await update.message.reply_text("♻️ Tozalandi")
 
-    # ================= MAIN =================
-    def main():
-        app = Application.builder().token(TOKEN).build()
 
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CallbackQueryHandler(check, pattern="check"))
-        app.add_handler(CommandHandler("stats", stats))
-        app.add_handler(CommandHandler("reset", reset))
+def main():
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN topilmadi")
 
-        app.run_polling()
+    app = Application.builder().token(TOKEN).build()
 
-    if __name__ == "__main__":
-        main ()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(check, pattern="check"))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("reset", reset))
+
+    print("🤖 Bot ishga tushdi")
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
