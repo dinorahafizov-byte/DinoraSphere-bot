@@ -1,137 +1,93 @@
-import json
-import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes
-)
+import os, json, asyncio
+from aiogram import Bot, Dispatcher
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.filters import CommandStart, Command
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
 CHANNELS = ["@Din_koreakosmetika", "@D_lingu"]
 PRIVATE_CHANNEL_ID = -1003512316765
-ADMINS = [123456789]
 REQUIRED = 8
 DATA_FILE = "data.json"
 
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
-def load_data():
+def load():
     if not os.path.exists(DATA_FILE):
         return {"users": {}, "used": []}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+    return json.load(open(DATA_FILE))
 
+def save(data):
+    json.dump(data, open(DATA_FILE, "w"))
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+data = load()
 
-
-data = load_data()
-
-TEXT = (
-    "Online til markazimizga xush kelibsiz 😍\n\n"
-    "👇 Arab tilidan TEKIN kurs\n"
-    "🎯 8 ta odam olib keling va sovg‘ani oling!\n\n"
-)
-
-
-async def is_subscribed(bot, uid: int) -> bool:
+async def is_subscribed(uid: int):
     for ch in CHANNELS:
         member = await bot.get_chat_member(ch, uid)
         if member.status in ["left", "kicked"]:
             return False
     return True
 
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = str(update.effective_user.id)
+@dp.message(CommandStart())
+async def start(message: Message):
+    uid = str(message.from_user.id)
+    args = message.text.split()
 
     if uid not in data["users"]:
         data["users"][uid] = {"count": 0, "reward": False}
 
-        if context.args:
-            ref = context.args[0]
+        if len(args) > 1:
+            ref = args[1]
             key = f"{ref}>{uid}"
-
-            if (
-                ref != uid
-                and ref in data["users"]
-                and key not in data["used"]
-                and data["users"][ref]["count"] < REQUIRED
-            ):
+            if ref != uid and ref in data["users"] and key not in data["used"]:
                 data["users"][ref]["count"] += 1
                 data["used"].append(key)
-                save_data(data)
-
-                await context.bot.send_message(
+                await bot.send_message(
                     int(ref),
-                    f"🎉 Sizning linkingiz orqali "
-                    f"{data['users'][ref]['count']} ta odam qo‘shildi!\n"
-                    f"📊 {data['users'][ref]['count']}/{REQUIRED}"
+                    f"🎉 Yangi odam qo‘shildi!\n📊 {data['users'][ref]['count']}/{REQUIRED}"
                 )
 
-    save_data(data)
+    save(data)
 
-    keyboard = [
-        [InlineKeyboardButton("📢 1-kanal", url="https://t.me/Din_koreakosmetika")],
-        [InlineKeyboardButton("📢 2-kanal", url="https://t.me/D_lingu")],
-        [InlineKeyboardButton("✅ Tekshirish", callback_data="check")]
-    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 1-kanal", url="https://t.me/Din_koreakosmetika")],
+        [InlineKeyboardButton(text="📢 2-kanal", url="https://t.me/D_lingu")],
+        [InlineKeyboardButton(text="✅ Tekshirish", callback_data="check")]
+    ])
 
-    await update.message.reply_text(
-        "👋 Avval barcha kanallarga obuna bo‘ling 👇",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await message.answer("👋 Avval barcha kanallarga obuna bo‘ling 👇", reply_markup=kb)
 
+@dp.callback_query(lambda c: c.data == "check")
+async def check(call: CallbackQuery):
+    uid = call.from_user.id
 
-async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-
-    uid = str(q.from_user.id)
-
-    if not await is_subscribed(context.bot, int(uid)):
-        await q.message.reply_text("❌ Avval barcha kanallarga obuna bo‘ling.")
+    if not await is_subscribed(uid):
+        await call.message.answer("❌ Avval barcha kanallarga obuna bo‘ling.")
         return
 
-    link = f"https://t.me/{context.bot.username}?start={uid}"
-    count = data["users"][uid]["count"]
+    link = f"https://t.me/{(await bot.me()).username}?start={uid}"
+    count = data["users"][str(uid)]["count"]
 
-    await q.message.reply_text(
-        TEXT +
-        f"🔗 Sizning shaxsiy linkingiz:\n{link}\n\n"
-        f"📊 Natija: {count}/{REQUIRED}"
+    await call.message.answer(
+        f"🎯 8 ta odam chaqiring\n"
+        f"📊 Natija: {count}/{REQUIRED}\n\n"
+        f"🔗 Sizning linkingiz:\n{link}"
     )
 
-    if count >= REQUIRED and not data["users"][uid]["reward"]:
-        invite = await context.bot.create_chat_invite_link(
-            chat_id=PRIVATE_CHANNEL_ID,
-            member_limit=1
-        )
-        data["users"][uid]["reward"] = True
-        save_data(data)
+    if count >= REQUIRED and not data["users"][str(uid)]["reward"]:
+        invite = await bot.create_chat_invite_link(PRIVATE_CHANNEL_ID, member_limit=1)
+        data["users"][str(uid)]["reward"] = True
+        save(data)
 
-        await context.bot.send_message(
-            int(uid),
-            f"🎉 TABRIKLAYMIZ!\n\n"
-            f"🎁 Yopiq kanal linki:\n{invite.invite_link}"
+        await bot.send_message(
+            uid,
+            f"🎉 TABRIKLAYMIZ!\n🎁 Yopiq kanal linki:\n{invite.invite_link}"
         )
 
-
-def main():
-    if not TOKEN:
-        raise RuntimeError("BOT_TOKEN topilmadi")
-
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(check, pattern="check"))
-
-    print("🤖 Bot ishga tushdi")
-    app.run_polling()
-
+async def main():
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
