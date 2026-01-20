@@ -2,10 +2,10 @@ import json
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application,
+    Updater,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes
+    CallbackContext
 )
 
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -38,15 +38,15 @@ TEXT = (
 )
 
 
-async def is_subscribed(bot, uid: int) -> bool:
+def is_subscribed(bot, uid):
     for ch in CHANNELS:
-        member = await bot.get_chat_member(ch, uid)
+        member = bot.get_chat_member(ch, uid)
         if member.status in ["left", "kicked"]:
             return False
     return True
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     uid = str(update.effective_user.id)
 
     if uid not in data["users"]:
@@ -66,7 +66,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 data["used"].append(key)
                 save_data(data)
 
-                await context.bot.send_message(
+                context.bot.send_message(
                     int(ref),
                     f"🎉 Sizning linkingiz orqali "
                     f"{data['users'][ref]['count']} ta odam qo‘shildi!\n"
@@ -81,82 +81,56 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("✅ Tekshirish", callback_data="check")]
     ]
 
-    await update.message.reply_text(
+    update.message.reply_text(
         "👋 Avval barcha kanallarga obuna bo‘ling 👇",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def check(update: Update, context: CallbackContext):
     q = update.callback_query
-    await q.answer()
+    q.answer()
 
     uid = str(q.from_user.id)
 
-    if not await is_subscribed(context.bot, int(uid)):
-        await q.message.reply_text("❌ Avval barcha kanallarga obuna bo‘ling.")
+    if not is_subscribed(context.bot, int(uid)):
+        q.message.reply_text("❌ Avval barcha kanallarga obuna bo‘ling.")
         return
 
     link = f"https://t.me/{context.bot.username}?start={uid}"
     count = data["users"][uid]["count"]
 
-    await q.message.reply_text(
+    q.message.reply_text(
         TEXT +
         f"🔗 Sizning shaxsiy linkingiz:\n{link}\n\n"
         f"📊 Natija: {count}/{REQUIRED}"
     )
 
     if count >= REQUIRED and not data["users"][uid]["reward"]:
-        invite = await context.bot.create_chat_invite_link(
+        invite = context.bot.create_chat_invite_link(
             chat_id=PRIVATE_CHANNEL_ID,
             member_limit=1
         )
         data["users"][uid]["reward"] = True
         save_data(data)
 
-        await context.bot.send_message(
+        context.bot.send_message(
             int(uid),
             f"🎉 TABRIKLAYMIZ!\n\n"
             f"🎁 Yopiq kanal linki:\n{invite.invite_link}"
         )
 
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMINS:
-        return
-
-    txt = "📊 STATISTIKA\n\n"
-    for u, d in data["users"].items():
-        txt += f"{u} → {d['count']}\n"
-
-    await update.message.reply_text(txt)
-
-
-async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMINS:
-        return
-
-    data["users"] = {}
-    data["used"] = []
-    save_data(data)
-    await update.message.reply_text("♻️ Tozalandi")
-
-
 def main():
-    if not TOKEN:
-        raise RuntimeError("BOT_TOKEN topilmadi")
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-    app = Application.builder().token(TOKEN).build()
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CallbackQueryHandler(check, pattern="check"))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(check, pattern="check"))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("reset", reset))
-
-    print("🤖 Bot ishga tushdi")
-    app.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 
 if __name__ == "__main__":
     main()
-
