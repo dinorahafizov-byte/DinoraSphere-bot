@@ -1,7 +1,12 @@
 import json
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes
+)
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -87,13 +92,12 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
 
     uid = str(q.from_user.id)
-    bot = context.bot
 
-    if not await is_subscribed(bot, int(uid)):
+    if not await is_subscribed(context.bot, int(uid)):
         await q.message.reply_text("❌ Avval barcha kanallarga obuna bo‘ling.")
         return
 
-    link = f"https://t.me/{bot.username}?start={uid}"
+    link = f"https://t.me/{context.bot.username}?start={uid}"
     count = data["users"][uid]["count"]
 
     await q.message.reply_text(
@@ -103,14 +107,14 @@ async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if count >= REQUIRED and not data["users"][uid]["reward"]:
-        invite = await bot.create_chat_invite_link(
+        invite = await context.bot.create_chat_invite_link(
             chat_id=PRIVATE_CHANNEL_ID,
             member_limit=1
         )
         data["users"][uid]["reward"] = True
         save_data(data)
 
-        await bot.send_message(
+        await context.bot.send_message(
             int(uid),
             f"🎉 TABRIKLAYMIZ!\n\n"
             f"🎁 Yopiq kanal linki:\n{invite.invite_link}"
@@ -155,3 +159,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    app.
