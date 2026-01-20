@@ -2,10 +2,10 @@ import json
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Updater,
+    Application,
     CommandHandler,
     CallbackQueryHandler,
-    CallbackContext
+    ContextTypes
 )
 
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -38,15 +38,15 @@ TEXT = (
 )
 
 
-def is_subscribed(bot, uid):
+async def is_subscribed(bot, uid: int) -> bool:
     for ch in CHANNELS:
-        member = bot.get_chat_member(ch, uid)
+        member = await bot.get_chat_member(ch, uid)
         if member.status in ["left", "kicked"]:
             return False
     return True
 
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
 
     if uid not in data["users"]:
@@ -66,7 +66,7 @@ def start(update: Update, context: CallbackContext):
                 data["used"].append(key)
                 save_data(data)
 
-                context.bot.send_message(
+                await context.bot.send_message(
                     int(ref),
                     f"🎉 Sizning linkingiz orqali "
                     f"{data['users'][ref]['count']} ta odam qo‘shildi!\n"
@@ -81,40 +81,40 @@ def start(update: Update, context: CallbackContext):
         [InlineKeyboardButton("✅ Tekshirish", callback_data="check")]
     ]
 
-    update.message.reply_text(
+    await update.message.reply_text(
         "👋 Avval barcha kanallarga obuna bo‘ling 👇",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-def check(update: Update, context: CallbackContext):
+async def check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    q.answer()
+    await q.answer()
 
     uid = str(q.from_user.id)
 
-    if not is_subscribed(context.bot, int(uid)):
-        q.message.reply_text("❌ Avval barcha kanallarga obuna bo‘ling.")
+    if not await is_subscribed(context.bot, int(uid)):
+        await q.message.reply_text("❌ Avval barcha kanallarga obuna bo‘ling.")
         return
 
     link = f"https://t.me/{context.bot.username}?start={uid}"
     count = data["users"][uid]["count"]
 
-    q.message.reply_text(
+    await q.message.reply_text(
         TEXT +
         f"🔗 Sizning shaxsiy linkingiz:\n{link}\n\n"
         f"📊 Natija: {count}/{REQUIRED}"
     )
 
     if count >= REQUIRED and not data["users"][uid]["reward"]:
-        invite = context.bot.create_chat_invite_link(
+        invite = await context.bot.create_chat_invite_link(
             chat_id=PRIVATE_CHANNEL_ID,
             member_limit=1
         )
         data["users"][uid]["reward"] = True
         save_data(data)
 
-        context.bot.send_message(
+        await context.bot.send_message(
             int(uid),
             f"🎉 TABRIKLAYMIZ!\n\n"
             f"🎁 Yopiq kanal linki:\n{invite.invite_link}"
@@ -122,14 +122,15 @@ def check(update: Update, context: CallbackContext):
 
 
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN topilmadi")
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CallbackQueryHandler(check, pattern="check"))
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(check, pattern="check"))
 
-    updater.start_polling()
-    updater.idle()
+    print("🤖 Bot ishga tushdi")
+    app.run_polling()
 
 
 if __name__ == "__main__":
